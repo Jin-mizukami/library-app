@@ -1,0 +1,14 @@
+{
+  "name": "図書検索",
+  "short_name": "図書検索",
+  "description": "QRコードで本の置き場・返却場所を調べる社内図書アプリ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#1d4ed8",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

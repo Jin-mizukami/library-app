@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>図書検索</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="図書検索">
+<meta name="theme-color" content="#1d4ed8">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: #f3f4f6; color: #111827;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+  header.appbar {
+    background: #1d4ed8; color: #fff; padding: 14px 16px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    font-size: 17px; font-weight: 600; position: sticky; top: 0; z-index: 10;
+  }
+  .view { display: none; padding: 16px; max-width: 640px; margin: 0 auto; }
+  .view.active { display: block; }
+
+  /* タブバー */
+  nav.tabs {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    display: flex; background: #fff; border-top: 1px solid #e5e7eb;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav.tabs button {
+    flex: 1; border: none; background: none; padding: 10px 0 8px;
+    font-size: 11px; color: #6b7280; cursor: pointer;
+  }
+  nav.tabs button .ico { display: block; font-size: 22px; line-height: 1.2; }
+  nav.tabs button.active { color: #1d4ed8; font-weight: 600; }
+
+  /* カメラ */
+  .camwrap { position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 3/4; }
+  .camwrap video { width: 100%; height: 100%; object-fit: cover; }
+  .camwrap .frame {
+    position: absolute; inset: 15%; border: 3px solid rgba(255,255,255,.85);
+    border-radius: 16px; pointer-events: none;
+  }
+  .camhint { text-align: center; color: #6b7280; font-size: 13px; margin-top: 10px; }
+  .bigbtn {
+    display: block; width: 100%; margin-top: 12px; padding: 14px;
+    background: #1d4ed8; color: #fff; border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+  }
+  .bigbtn.gray { background: #6b7280; }
+  .bigbtn:disabled { opacity: .5; }
+
+  /* 検索 */
+  .searchbar { display: flex; gap: 8px; }
+  .searchbar input {
+    flex: 1; padding: 12px 14px; font-size: 16px;
+    border: 1px solid #d1d5db; border-radius: 10px; background: #fff;
+  }
+  .searchbar button {
+    padding: 12px 18px; background: #1d4ed8; color: #fff;
+    border: none; border-radius: 10px; font-size: 15px; cursor: pointer;
+  }
+  ul.results { list-style: none; margin-top: 14px; }
+  ul.results li {
+    background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+    cursor: pointer; border: 1px solid #e5e7eb;
+  }
+  ul.results li .ttl { font-weight: 600; font-size: 15px; }
+  ul.results li .sub { color: #6b7280; font-size: 12px; margin-top: 2px; }
+  ul.results li .shelfmini { color: #1d4ed8; font-weight: 600; font-size: 13px; margin-top: 4px; }
+
+  /* 結果モーダル */
+  .modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 40;
+    align-items: flex-end; justify-content: center;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: #fff; width: 100%; max-width: 640px;
+    border-radius: 18px 18px 0 0; padding: 22px 20px;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+    max-height: 85vh; overflow-y: auto;
+  }
+  .modal .bookid { color: #6b7280; font-size: 13px; }
+  .modal .booktitle { font-size: 19px; font-weight: 700; margin: 4px 0 2px; }
+  .modal .bookauthor { color: #4b5563; font-size: 14px; margin-bottom: 14px; }
+  .locbox { border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+  .locbox .lbl { font-size: 12px; font-weight: 600; }
+  .locbox .val { font-size: 34px; font-weight: 800; line-height: 1.3; word-break: break-all; }
+  .locbox.shelf { background: #dbeafe; color: #1e3a8a; }
+  .locbox.ret { background: #dcfce7; color: #14532d; }
+  .locbox.ret .val { font-size: 24px; }
+  .modal .meta { color: #6b7280; font-size: 13px; margin-top: 6px; white-space: pre-wrap; }
+  .modal .close { margin-top: 16px; }
+  .badge {
+    display: inline-block; background: #fef3c7; color: #92400e;
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; margin-bottom: 10px;
+  }
+
+  /* 管理 */
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h3 { font-size: 15px; margin-bottom: 10px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    border: 1px solid #d1d5db; border-radius: 8px; background: #fff;
+  }
+  .row2 { display: flex; gap: 10px; }
+  .row2 .field { flex: 1; }
+  .smallbtn {
+    padding: 8px 14px; border: 1px solid #d1d5db; background: #fff;
+    border-radius: 8px; font-size: 13px; cursor: pointer;
+  }
+  .smallbtn.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  .smallbtn.danger { color: #b91c1c; border-color: #fca5a5; }
+  .adminlist { max-height: 320px; overflow-y: auto; margin-top: 8px; }
+  .adminlist table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .adminlist th, .adminlist td { text-align: left; padding: 6px 6px; border-bottom: 1px solid #f3f4f6; }
+  .adminlist tr { cursor: pointer; }
+  .adminlist input[type=checkbox] { width: 18px; height: 18px; }
+  .msg { font-size: 13px; margin-top: 8px; }
+  .msg.err { color: #b91c1c; }
+  .msg.ok { color: #15803d; }
+  .note { font-size: 12px; color: #6b7280; line-height: 1.6; }
+
+  #toast {
+    display: none; position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+    background: #111827; color: #fff; padding: 10px 18px; border-radius: 999px;
+    font-size: 14px; z-index: 60; white-space: nowrap;
+  }
+  .spinner { text-align: center; color: #6b7280; padding: 20px; font-size: 14px; }
+
+  /* ラベル印刷 */
+  #printArea { display: none; }
+  @media print {
+    body > *:not(#printArea) { display: none !important; }
+    body { background: #fff; padding: 0; }
+    #printArea { display: block; }
+    .labelgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; padding: 8mm; }
+    .label {
+      border: 0.3mm dashed #999; border-radius: 2mm; padding: 3mm;
+      text-align: center; page-break-inside: avoid;
+    }
+    .label .qr { display: flex; justify-content: center; }
+    .label .qr img, .label .qr canvas { width: 22mm !important; height: 22mm !important; }
+    .label .lid { font-size: 9pt; font-weight: 700; margin-top: 1mm; }
+    .label .lttl { font-size: 6.5pt; color: #333; overflow: hidden; max-height: 8mm; }
+  }
+</style>
+</head>
+<body>
+
+<header class="appbar">📚 図書検索</header>
+
+<!-- スキャン -->
+<div class="view active" id="view-scan">
+  <div class="camwrap">
+    <video id="video" playsinline muted></video>
+    <div class="frame"></div>
+  </div>
+  <p class="camhint">本のQRコードを枠内にかざしてください</p>
+  <button class="bigbtn" id="btnCam">カメラを開始</button>
+</div>
+
+<!-- 検索 -->
+<div class="view" id="view-search">
+  <div class="searchbar">
+    <input id="q" type="search" placeholder="書名・著者名・ID で検索" enterkeyhint="search">
+    <button id="btnSearch">検索</button>
+  </div>
+  <div id="searchOut"></div>
+</div>
+
+<!-- 管理 -->
+<div class="view" id="view-admin">
+  <div class="card" id="setupCard">
+    <h3>⚙️ 接続設定</h3>
+    <div class="field">
+      <label>API URL(GASのウェブアプリURL)</label>
+      <input id="apiUrl" placeholder="https://script.google.com/macros/s/…/exec">
+    </div>
+    <button class="smallbtn primary" id="btnSaveApi">保存</button>
+    <span class="msg" id="apiMsg"></span>
+    <p class="note" style="margin-top:8px">設置手順書に従ってGASを公開し、そのURLをここに貼り付けてください。この設定は端末に保存されます。</p>
+  </div>
+
+  <div class="card">
+    <h3>🔑 管理者ログイン</h3>
+    <div class="field">
+      <label>管理パスワード(Code.gs で設定したもの)</label>
+      <input id="adminPw" type="password" autocomplete="off">
+    </div>
+    <p class="note">登録・編集・削除の実行時に使用します。</p>
+  </div>
+
+  <div class="card">
+    <h3>📖 本の登録・編集</h3>
+    <div class="field"><label>ID(空欄なら自動採番 B-0001…)</label><input id="f-id" placeholder="B-0001"></div>
+    <div class="field"><label>書名 *</label><input id="f-title"></div>
+    <div class="field"><label>著者</label><input id="f-author"></div>
+    <div class="row2">
+      <div class="field"><label>棚番地 *</label><input id="f-shelf" placeholder="A-3-2"></div>
+      <div class="field"><label>返却場所</label><input id="f-ret" placeholder="返却棚B"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>状態</label>
+        <select id="f-status">
+          <option value=""></option><option>在架</option><option>貸出中</option><option>修理中</option><option>除籍</option>
+        </select>
+      </div>
+      <div class="field"><label>備考</label><input id="f-note"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="smallbtn primary" id="btnAdd">新規登録</button>
+      <button class="smallbtn" id="btnUpdate">上書き保存</button>
+      <button class="smallbtn danger" id="btnDelete">削除</button>
+      <button class="smallbtn" id="btnClear">フォームを空にする</button>
+    </div>
+    <div class="msg" id="formMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>📋 蔵書一覧・QRラベル印刷</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="smallbtn" id="btnLoadList">一覧を読み込む</button>
+      <button class="smallbtn" id="btnCheckAll">全選択/解除</button>
+      <button class="smallbtn primary" id="btnPrint">選択した本のQRラベルを印刷</button>
+    </div>
+    <p class="note" style="margin-top:6px">行をタップすると編集フォームに読み込みます。印刷はA4・横4列で並びます。</p>
+    <div class="adminlist" id="adminList"></div>
+  </div>
+</div>
+
+<!-- 結果モーダル -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<div id="toast"></div>
+<div id="printArea"></div>
+
+<nav class="tabs">
+  <button data-view="scan" class="active"><span class="ico">📷</span>スキャン</button>
+  <button data-view="search"><span class="ico">🔍</span>検索</button>
+  <button data-view="admin"><span class="ico">🛠</span>管理</button>
+</nav>
+
+<script>
+'use strict';
+
+/* ================= 設定 ================= */
+/* GASのURLをここに直接書いてもOK(書けば設定画面での入力は不要) */
+var DEFAULT_API_URL = '';
+
+function apiUrl() {
+  return (localStorage.getItem('libapp_api') || DEFAULT_API_URL).trim();
+}
+
+/* ================= 共通 ================= */
+var $ = function (id) { return document.getElementById(id); };
+
+function toast(text) {
+  var t = $('toast');
+  t.textContent = text;
+  t.style.display = 'block';
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(function () { t.style.display = 'none'; }, 2200);
+}
+
+function apiGet(params) {
+  var url = apiUrl();
+  if (!url) return Promise.reject(new Error('API URLが未設定です。「管理」タブで設定してください'));
+  var qs = Object.keys(params).map(function (k) {
+    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  }).join('&');
+  return fetch(url + '?' + qs).then(function (r) {
+    if (!r.ok) throw new Error('通信エラー (' + r.status + ')');
+    return r.json();
+  });
+}
+
+function apiPost(body) {
+  var url = apiUrl();
+  if (!url) return Promise.reject(new Error('API URLが未設定です。「管理」タブで設定してください'));
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  }).then(function (r) {
+    if (!r.ok) throw new Error('通信エラー (' + r.status + ')');
+    return r.json();
+  });
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+/* ================= タブ切替 ================= */
+var tabs = document.querySelectorAll('nav.tabs button');
+tabs.forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    tabs.forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    $('view-' + btn.dataset.view).classList.add('active');
+    if (btn.dataset.view !== 'scan') stopCamera();
+  });
+});
+
+/* ================= 結果表示 ================= */
+function showBook(book) {
+  var statusBadge = (book.status && book.status !== '在架')
+    ? '<span class="badge">' + esc(book.status) + '</span>' : '';
+  var meta = [];
+  if (book.note) meta.push('備考: ' + book.note);
+  if (book.updated_at) meta.push('更新: ' + book.updated_at);
+  $('modalBody').innerHTML =
+    '<div class="bookid">' + esc(book.id) + '</div>' +
+    '<div class="booktitle">' + esc(book.title) + '</div>' +
+    '<div class="bookauthor">' + esc(book.author) + '</div>' +
+    statusBadge +
+    '<div class="locbox shelf"><div class="lbl">📍 置き場(棚番地)</div><div class="val">' + esc(book.shelf || '未設定') + '</div></div>' +
+    '<div class="locbox ret"><div class="lbl">↩️ 返却場所</div><div class="val">' + esc(book.return_location || '棚に直接戻す') + '</div></div>' +
+    (meta.length ? '<div class="meta">' + esc(meta.join('\n')) + '</div>' : '') +
+    '<button class="bigbtn gray close" onclick="closeModal()">閉じる</button>';
+  $('modalBg').classList.add('open');
+}
+
+function closeModal() {
+  $('modalBg').classList.remove('open');
+  lastCode = ''; // 同じ本をもう一度スキャンできるように
+}
+$('modalBg').addEventListener('click', function (e) {
+  if (e.target === this) closeModal();
+});
+
+function lookupId(id) {
+  toast('検索中…');
+  apiGet({ action: 'get', id: id }).then(function (res) {
+    if (res.ok) { showBook(res.book); }
+    else { toast(res.error || '見つかりません'); }
+  }).catch(function (err) { toast(err.message); });
+}
+
+/* ================= QRスキャン ================= */
+var stream = null, scanning = false, lastCode = '';
+var video = $('video');
+var scanCanvas = document.createElement('canvas');
+var scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
+var barcodeDetector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+
+$('btnCam').addEventListener('click', function () {
+  if (stream) { stopCamera(); } else { startCamera(); }
+});
+
+function startCamera() {
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1280 } },
+    audio: false
+  }).then(function (s) {
+    stream = s;
+    video.srcObject = s;
+    video.setAttribute('playsinline', '');
+    video.play();
+    scanning = true;
+    $('btnCam').textContent = 'カメラを停止';
+    requestAnimationFrame(scanLoop);
+  }).catch(function (err) {
+    toast('カメラを起動できません: ' + err.message);
+  });
+}
+
+function stopCamera() {
+  scanning = false;
+  if (stream) {
+    stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null;
+    video.srcObject = null;
+  }
+  $('btnCam').textContent = 'カメラを開始';
+}
+
+function onCode(text) {
+  var code = String(text).trim();
+  if (!code || code === lastCode) return;
+  lastCode = code;
+  if (navigator.vibrate) navigator.vibrate(80);
+  /* QRにURLが入っている場合は ?id=xxx や 末尾のIDを拾う */
+  var m = code.match(/[?&]id=([^&]+)/);
+  lookupId(m ? decodeURIComponent(m[1]) : code);
+}
+
+function scanLoop() {
+  if (!scanning) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA && !$('modalBg').classList.contains('open')) {
+    if (barcodeDetector) {
+      barcodeDetector.detect(video).then(function (codes) {
+        if (codes.length) onCode(codes[0].rawValue);
+      }).catch(function () {});
+    } else if (window.jsQR) {
+      var w = video.videoWidth, h = video.videoHeight;
+      if (w && h) {
+        var scale = 480 / w;
+        scanCanvas.width = 480;
+        scanCanvas.height = Math.round(h * scale);
+        scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
+        var img = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+        var found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (found && found.data) onCode(found.data);
+      }
+    }
+  }
+  setTimeout(function () { requestAnimationFrame(scanLoop); }, 150);
+}
+
+/* ================= キーワード検索 ================= */
+function runSearch() {
+  var q = $('q').value.trim();
+  if (!q) return;
+  $('searchOut').innerHTML = '<div class="spinner">検索中…</div>';
+  apiGet({ action: 'search', q: q }).then(function (res) {
+    if (!res.ok) { $('searchOut').innerHTML = '<div class="spinner">' + esc(res.error) + '</div>'; return; }
+    if (!res.books.length) { $('searchOut').innerHTML = '<div class="spinner">見つかりませんでした</div>'; return; }
+    var html = '<ul class="results">';
+    res.books.forEach(function (b, i) {
+      html += '<li data-i="' + i + '">' +
+        '<div class="ttl">' + esc(b.title) + '</div>' +
+        '<div class="sub">' + esc(b.author) + ' ・ ' + esc(b.id) + '</div>' +
+        '<div class="shelfmini">📍 ' + esc(b.shelf) + '</div></li>';
+    });
+    html += '</ul>';
+    $('searchOut').innerHTML = html;
+    var items = $('searchOut').querySelectorAll('li');
+    items.forEach(function (li) {
+      li.addEventListener('click', function () { showBook(res.books[+li.dataset.i]); });
+    });
+  }).catch(function (err) { $('searchOut').innerHTML = '<div class="spinner">' + esc(err.message) + '</div>'; });
+}
+$('btnSearch').addEventListener('click', runSearch);
+$('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { runSearch(); this.blur(); } });
+
+/* ================= 管理: 接続設定 ================= */
+$('apiUrl').value = apiUrl();
+$('btnSaveApi').addEventListener('click', function () {
+  var url = $('apiUrl').value.trim();
+  if (!/^https:\/\/script\.google\.com\//.test(url)) {
+    $('apiMsg').className = 'msg err'; $('apiMsg').textContent = 'GASのURL(https://script.google.com/…)を入れてください';
+    return;
+  }
+  localStorage.setItem('libapp_api', url);
+  $('apiMsg').className = 'msg ok'; $('apiMsg').textContent = '保存しました';
+  apiGet({ action: 'list' }).then(function (res) {
+    $('apiMsg').textContent = res.ok ? '保存しました(接続OK・' + res.books.length + '冊)' : '保存しましたが応答エラー: ' + res.error;
+  }).catch(function (err) {
+    $('apiMsg').className = 'msg err'; $('apiMsg').textContent = '保存しましたが接続できません: ' + err.message;
+  });
+});
+
+/* ================= 管理: 登録・編集 ================= */
+function formBook() {
+  return {
+    id: $('f-id').value.trim(),
+    title: $('f-title').value.trim(),
+    author: $('f-author').value.trim(),
+    shelf: $('f-shelf').value.trim(),
+    return_location: $('f-ret').value.trim(),
+    status: $('f-status').value,
+    note: $('f-note').value.trim()
+  };
+}
+
+function fillForm(b) {
+  $('f-id').value = b.id; $('f-title').value = b.title; $('f-author').value = b.author;
+  $('f-shelf').value = b.shelf; $('f-ret').value = b.return_location;
+  $('f-status').value = b.status || ''; $('f-note').value = b.note;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function adminAction(action) {
+  var pw = $('adminPw').value;
+  var book = formBook();
+  var msg = $('formMsg');
+  if (!pw) { msg.className = 'msg err'; msg.textContent = '管理パスワードを入れてください'; return; }
+  if (action !== 'delete' && (!book.title || !book.shelf)) {
+    msg.className = 'msg err'; msg.textContent = '書名と棚番地は必須です'; return;
+  }
+  if (action !== 'add' && !book.id) {
+    msg.className = 'msg err'; msg.textContent = 'IDを指定してください'; return;
+  }
+  if (action === 'delete' && !confirm('ID ' + book.id + ' を削除しますか?')) return;
+  msg.className = 'msg'; msg.textContent = '送信中…';
+  apiPost({ password: pw, action: action, book: book }).then(function (res) {
+    if (res.ok) {
+      msg.className = 'msg ok';
+      msg.textContent = (action === 'add' ? '登録しました: ' : action === 'update' ? '保存しました: ' : '削除しました: ') + res.id;
+      if (action === 'add') $('f-id').value = res.id;
+      loadList();
+    } else {
+      msg.className = 'msg err'; msg.textContent = res.error;
+    }
+  }).catch(function (err) { msg.className = 'msg err'; msg.textContent = err.message; });
+}
+
+$('btnAdd').addEventListener('click', function () { adminAction('add'); });
+$('btnUpdate').addEventListener('click', function () { adminAction('update'); });
+$('btnDelete').addEventListener('click', function () { adminAction('delete'); });
+$('btnClear').addEventListener('click', function () {
+  ['f-id', 'f-title', 'f-author', 'f-shelf', 'f-ret', 'f-note'].forEach(function (id) { $(id).value = ''; });
+  $('f-status').value = '';
+  $('formMsg').textContent = '';
+});
+
+/* ================= 管理: 一覧・ラベル印刷 ================= */
+var listCache = [];
+
+function loadList() {
+  $('adminList').innerHTML = '<div class="spinner">読み込み中…</div>';
+  apiGet({ action: 'list' }).then(function (res) {
+    if (!res.ok) { $('adminList').innerHTML = '<div class="spinner">' + esc(res.error) + '</div>'; return; }
+    listCache = res.books;
+    if (!listCache.length) { $('adminList').innerHTML = '<div class="spinner">まだ登録がありません</div>'; return; }
+    var html = '<table><tr><th></th><th>ID</th><th>書名</th><th>棚</th></tr>';
+    listCache.forEach(function (b, i) {
+      html += '<tr data-i="' + i + '">' +
+        '<td><input type="checkbox" class="lblchk" data-i="' + i + '" onclick="event.stopPropagation()"></td>' +
+        '<td>' + esc(b.id) + '</td><td>' + esc(b.title) + '</td><td>' + esc(b.shelf) + '</td></tr>';
+    });
+    html += '</table>';
+    $('adminList').innerHTML = html;
+    $('adminList').querySelectorAll('tr[data-i]').forEach(function (tr) {
+      tr.addEventListener('click', function () { fillForm(listCache[+tr.dataset.i]); });
+    });
+  }).catch(function (err) { $('adminList').innerHTML = '<div class="spinner">' + esc(err.message) + '</div>'; });
+}
+$('btnLoadList').addEventListener('click', loadList);
+
+$('btnCheckAll').addEventListener('click', function () {
+  var boxes = document.querySelectorAll('.lblchk');
+  if (!boxes.length) { toast('先に一覧を読み込んでください'); return; }
+  var allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+  boxes.forEach(function (b) { b.checked = !allOn; });
+});
+
+$('btnPrint').addEventListener('click', function () {
+  var selected = [];
+  document.querySelectorAll('.lblchk').forEach(function (b) {
+    if (b.checked) selected.push(listCache[+b.dataset.i]);
+  });
+  if (!selected.length) { toast('印刷する本にチェックを入れてください'); return; }
+  var area = $('printArea');
+  area.innerHTML = '<div class="labelgrid"></div>';
+  var grid = area.firstChild;
+  selected.forEach(function (b) {
+    var label = document.createElement('div');
+    label.className = 'label';
+    var qrDiv = document.createElement('div');
+    qrDiv.className = 'qr';
+    label.appendChild(qrDiv);
+    var lid = document.createElement('div');
+    lid.className = 'lid'; lid.textContent = b.id;
+    label.appendChild(lid);
+    var lttl = document.createElement('div');
+    lttl.className = 'lttl'; lttl.textContent = b.title;
+    label.appendChild(lttl);
+    grid.appendChild(label);
+    new QRCode(qrDiv, { text: b.id, width: 128, height: 128, correctLevel: QRCode.CorrectLevel.M });
+  });
+  setTimeout(function () { window.print(); }, 400);
+});
+</script>
+</body>
+</html>
